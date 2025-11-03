@@ -1,0 +1,35 @@
+{
+  "name": "MLX90640-Thermal-Camera",
+  "version": "1.0.0",
+  "description": "MLX90640红外摄像头项目，基于M5Stack CoreS3开发板",
+  "keywords": [
+    "mlx90640",
+    "thermal",
+    "infrared",
+    "camera",
+    "m5stack",
+    "cores3",
+    "iot",
+    "temperature",
+    "sensor"
+  ],
+  "authors": [
+    {
+      "name": "开发者",
+      "email": "developer@example.com"
+    }
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/yourusername/MLX90640-Thermal-Camera",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/MLX90640-Thermal-Camera.git"
+  },
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "m5stack/M5CoreS3": "^1.0.7",
+    "adafruit/Adafruit MLX90640 Library": "^1.2.1",
+    "adafruit/Adafruit BusIO": "^1.14.1"
+  }
+}
