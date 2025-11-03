@@ -26,8 +26,7 @@ void displaySimpleHeatmap();
 
 void setup() {
   // 初始化M5Stack
-  auto cfg = M5.config();
-  CoreS3.begin(cfg);
+  M5.begin();
   
   // 初始化串口
   Serial.begin(115200);
@@ -67,16 +66,16 @@ void setup() {
   }
   
   // 显示初始化信息
-  CoreS3.Display.fillScreen(BLACK);
-  CoreS3.Display.setTextColor(WHITE);
-  CoreS3.Display.setTextSize(2);
-  CoreS3.Display.setCursor(10, 10);
-  CoreS3.Display.println("GYMCU90640 UART");
-  CoreS3.Display.setTextSize(1);
-  CoreS3.Display.setCursor(10, 40);
-  CoreS3.Display.println("Press BtnA to read temp");
-  CoreS3.Display.setCursor(10, 60);
-  CoreS3.Display.printf("RX: G%d (9600/115200bps)", MLX_RX_PIN);
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setCursor(10, 10);
+  M5.Lcd.println("GYMCU90640 UART");
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setCursor(10, 40);
+  M5.Lcd.println("Press BtnA to read temp");
+  M5.Lcd.setCursor(10, 60);
+  M5.Lcd.printf("RX: G%d (9600/115200bps)", MLX_RX_PIN);
   
   Serial.println("初始化完成！");
 }
@@ -310,7 +309,7 @@ void displaySimpleHeatmap() {
   float tempRange = maxTemp - minTemp;
   
   // 清空屏幕
-  CoreS3.Display.fillScreen(BLACK);
+  M5.Lcd.fillScreen(BLACK);
   
   // 绘制热力图 (缩放到适合屏幕)
   int pixelSize = 8; // 每个热像素的显示大小
@@ -329,12 +328,12 @@ void displaySimpleHeatmap() {
           // 蓝色到绿色
           int blue = 255 * (1 - normalized * 2);
           int green = 255 * (normalized * 2);
-          color = CoreS3.Display.color565(0, green, blue);
+          color = M5.Lcd.color565(0, green, blue);
         } else {
           // 绿色到红色
           int red = 255 * ((normalized - 0.5) * 2);
           int green = 255 * (1 - (normalized - 0.5) * 2);
-          color = CoreS3.Display.color565(red, green, 0);
+          color = M5.Lcd.color565(red, green, 0);
         }
       } else {
         color = WHITE;
@@ -343,13 +342,13 @@ void displaySimpleHeatmap() {
       // 绘制像素块
       int x = w * pixelSize + 16;
       int y = h * pixelSize + 20;
-      CoreS3.Display.fillRect(x, y, pixelSize-1, pixelSize-1, color);
+      M5.Lcd.fillRect(x, y, pixelSize-1, pixelSize-1, color);
     }
   }
   
   // 显示温度范围
-  CoreS3.Display.setTextColor(WHITE);
-  CoreS3.Display.setTextSize(1);
-  CoreS3.Display.setCursor(10, 220);
-  CoreS3.Display.printf("Min:%.1fC Max:%.1fC", minTemp, maxTemp);
+  M5.Lcd.setTextColor(WHITE);
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setCursor(10, 220);
+  M5.Lcd.printf("Min:%.1fC Max:%.1fC", minTemp, maxTemp);
 }
