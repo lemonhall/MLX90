@@ -23,6 +23,12 @@ bool readMLXFrame();
 bool parseGYMCUData(String data);
 void generateTestData();
 void displaySimpleHeatmap();
+uint32_t scanBaud();
+void dumpRaw(uint16_t n);
+
+// 原始数据缓冲（仅调试用，避免无限增长）
+static String g_rawData; // 存最新一次读取的原始串口块
+static uint32_t g_currentBaud = MLX_BAUDRATE_DEFAULT;
 
 void setup() {
   // 初始化M5Stack
@@ -34,11 +40,10 @@ void setup() {
   
   Serial.println("GYMCU90640 UART模式红外摄像头测试");
   
-  // 初始化MLX90640串口通信 - 先尝试默认波特率9600
-  mlxSerial.begin(MLX_BAUDRATE_DEFAULT, SERIAL_8N1, MLX_RX_PIN, MLX_TX_PIN);
-  
-  Serial.printf("GYMCU90640串口初始化: RX=%d, TX=%d, 波特率=%d\n", 
-                MLX_RX_PIN, MLX_TX_PIN, MLX_BAUDRATE_DEFAULT);
+  // 自动扫描可用波特率
+  g_currentBaud = scanBaud();
+  mlxSerial.begin(g_currentBaud, SERIAL_8N1, MLX_RX_PIN, MLX_TX_PIN);
+  Serial.printf("选择波特率: %lu bps (RX=%d TX=%d)\n", (unsigned long)g_currentBaud, MLX_RX_PIN, MLX_TX_PIN);
   
   // 等待传感器稳定
   delay(2000);
@@ -84,6 +89,11 @@ void loop() {
   M5.update();
   
   // 按下按钮A读取温度数据
+  // 长按A键 (>1.5s)输出原始数据调试
+  if (M5.BtnA.pressedFor(1500)) {
+    dumpRaw(512); // 输出前512字节
+  }
+
   if (M5.BtnA.wasPressed()) {
     Serial.println("读取MLX90640数据...");
     
@@ -171,48 +181,34 @@ bool testMLXConnection() {
 
 // 读取GYMCU90640温度帧数据 (UART模式)
 bool readMLXFrame() {
-  // 清空缓冲区
-  while(mlxSerial.available()) {
-    mlxSerial.read();
-  }
-  
-  // GYMCU90640可能支持连续输出模式，直接读取
-  Serial.println("等待GYMCU90640数据...");
-  
-  // 等待数据 - GYMCU可能需要更长时间
-  int timeout = 5000; // 5秒超时
-  String dataBuffer = "";
-  
-  while (timeout > 0) {
-    if (mlxSerial.available()) {
+  Serial.println("等待GYMCU90640数据窗口 800ms...");
+  uint32_t start = millis();
+  g_rawData = ""; // 重置
+  while (millis() - start < 800) {
+    while (mlxSerial.available()) {
       char c = mlxSerial.read();
-      dataBuffer += c;
-      
-      // 检查是否收到完整帧 (GYMCU可能以特定字符结束)
-      if (dataBuffer.length() > 100) { // 收集足够数据后处理
-        timeout = 100; // 继续读取剩余数据
+      g_rawData += c;
+      if (g_rawData.length() > 8192) { // 限制最大长度
+        break;
       }
     }
-    delay(1);
-    timeout--;
+    delay(2);
   }
-  
-  if (dataBuffer.length() < 10) {
-    Serial.println("UART读取超时或数据不足");
+  Serial.printf("窗口结束，收到字节: %u\n", (unsigned)g_rawData.length());
+  if (g_rawData.length() < 20) {
+    Serial.println("数据太少，可能未输出或波特率不匹配/模块未进入UART模式");
     return false;
   }
-  
-  Serial.println("接收到数据长度: " + String(dataBuffer.length()));
-  Serial.println("数据开头: " + dataBuffer.substring(0, min(50, (int)dataBuffer.length())));
-  
-  // 解析数据
-  if (parseGYMCUData(dataBuffer)) {
-    Serial.println("GYMCU数据解析成功");
+  Serial.println("前120字符: ");
+  Serial.println(g_rawData.substring(0, min(120, (int)g_rawData.length())));
+
+  if (parseGYMCUData(g_rawData)) {
+    Serial.println("解析成功");
     return true;
   } else {
-    Serial.println("GYMCU数据解析失败，使用测试数据");
+    Serial.println("解析失败，使用模拟数据");
     generateTestData();
-    return true; // 即使解析失败也返回true，使用测试数据
+    return true;
   }
 }
 
@@ -351,4 +347,66 @@ void displaySimpleHeatmap() {
   M5.Lcd.setTextSize(1);
   M5.Lcd.setCursor(10, 220);
   M5.Lcd.printf("Min:%.1fC Max:%.1fC", minTemp, maxTemp);
+}
+
+// 自动扫描波特率：返回检测到的最佳（数据最多）波特率
+uint32_t scanBaud() {
+  struct Candidate { uint32_t baud; uint16_t bytes; };
+  Candidate cands[] = {
+    {MLX_BAUDRATE_DEFAULT, 0},
+    {MLX_BAUDRATE_HIGH, 0},
+    {MLX_BAUDRATE_ULTRA, 0}
+  };
+  Serial.println("开始扫描波特率...");
+  for (auto &c : cands) {
+    mlxSerial.end();
+    delay(50);
+    mlxSerial.begin(c.baud, SERIAL_8N1, MLX_RX_PIN, MLX_TX_PIN);
+    // 采样 250ms
+    uint32_t t0 = millis();
+    uint16_t count = 0;
+    while (millis() - t0 < 250) {
+      while (mlxSerial.available()) {
+        mlxSerial.read();
+        count++;
+      }
+    }
+    c.bytes = count;
+    Serial.printf("  波特率 %lu 收到字节 %u\n", (unsigned long)c.baud, count);
+  }
+  // 选最大
+  Candidate best = cands[0];
+  for (auto &c : cands) {
+    if (c.bytes > best.bytes) best = c;
+  }
+  if (best.bytes == 0) {
+    Serial.println("未检测到任何数据，采用默认9600");
+    return MLX_BAUDRATE_DEFAULT;
+  }
+  Serial.printf("波特率扫描完成，选取 %lu (bytes=%u)\n", (unsigned long)best.baud, best.bytes);
+  return best.baud;
+}
+
+// 输出原始数据前 n 字节（十六进制 + 可打印字符）
+void dumpRaw(uint16_t n) {
+  if (g_rawData.length() == 0) {
+    Serial.println("无原始数据可输出，先按A短按采集一帧。");
+    return;
+  }
+  uint16_t len = min<uint16_t>(n, g_rawData.length());
+  Serial.printf("---- RAW HEX (len=%u) ----\n", len);
+  for (uint16_t i = 0; i < len; ++i) {
+    uint8_t b = (uint8_t)g_rawData[i];
+    Serial.printf("%02X ", b);
+    if ((i+1) % 32 == 0) Serial.println();
+  }
+  Serial.println();
+  Serial.println("---- RAW ASCII ----");
+  for (uint16_t i = 0; i < len; ++i) {
+    char ch = g_rawData[i];
+    if (ch < 32 || ch > 126) ch = '.';
+    Serial.print(ch);
+  }
+  Serial.println();
+  Serial.println("-------------------");
 }
